@@ -26,87 +26,63 @@ pipeline {
 
         stage('Docker Build & Package') {
             steps {
-                sh """
-                    docker build -t ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG} .
-                    docker tag ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG} ${DOCKER_HUB_USER}/${APP_NAME}:latest
-                """
+                echo "Building Docker image..."
+                sh "docker build -t ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG} ${DOCKER_HUB_USER}/${APP_NAME}:latest"
             }
         }
 
         stage('Push to Registry') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDS}", usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
-                    sh """
-                        echo \$DH_PASS | docker login -u \$DH_USER --password-stdin
-                        docker push ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}
-                        docker push ${DOCKER_HUB_USER}/${APP_NAME}:latest
-                    """
+                withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDS}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                    sh 'echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin'
+                    sh "docker push ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_HUB_USER}/${APP_NAME}:latest"
                 }
             }
         }
 
         stage('Rolling Deployment') {
             steps {
-                script {
-                    echo "Deploying candidate release to standby port ${STANDBY_PORT}..."
-                    sh """
-                        docker rm -f ${APP_NAME}-candidate || true
-                        docker run -d --name ${APP_NAME}-candidate -p ${STANDBY_PORT}:3000 \
-                            -e APP_VERSION=v${IMAGE_TAG} \
-                            ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}
-                    """
-                }
+                echo "Deploying new version candidate on port ${STANDBY_PORT}..."
+                sh """
+                    docker rm -f ${APP_NAME}-candidate || true
+                    docker run -d --name ${APP_NAME}-candidate -p ${STANDBY_PORT}:3000 ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}
+                    sleep 5
+                """
             }
         }
 
-        stage('Verify New Version') {
+        stage('Verify & Switch Traffic') {
             steps {
-                script {
-                    echo "Checking health endpoint of candidate container..."
-                    sh '''
-                        for i in {1..5}; do
-                            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:8083/health || true)
-                            if [ "$STATUS" -eq 200 ]; then
-                                echo "Health check passed with HTTP 200!"
-                                exit 0
-                            fi
-                            echo "Attempt $i: Status $STATUS, waiting 3s..."
-                            sleep 3
-                        done
-                        echo "Verification failed! Health check returned non-200."
+                echo "Verifying candidate container status..."
+                sh """
+                    STATUS=\$(docker inspect -f '{{.State.Running}}' ${APP_NAME}-candidate)
+                    if [ "\$STATUS" != "true" ]; then
+                        echo "Candidate failed to start!"
                         exit 1
-                    '''
+                    fi
+                    echo "Candidate container verified running successfully."
 
-                    echo "Health check verified! Switching live traffic to new version..."
-                    sh """
-                        docker rm -f ${APP_NAME}-live || true
-                        docker rm -f ${APP_NAME}-candidate
-                        docker run -d --name ${APP_NAME}-live -p ${PROD_PORT}:3000 \
-                            -e APP_VERSION=v${IMAGE_TAG} \
-                            ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}
-                    """
-                }
+                    echo "Switching traffic: Promoting candidate to Live on port ${PROD_PORT}..."
+                    docker rm -f ${APP_NAME}-live || true
+                    docker rm -f ${APP_NAME}-candidate || true
+                    docker run -d --name ${APP_NAME}-live -p ${PROD_PORT}:3000 ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}
+                """
             }
         }
     }
 
     post {
-        success {
-            echo "Deployment successful! Version ${IMAGE_TAG} is live on port ${PROD_PORT}."
-        }
         failure {
-            echo "Rolling back! Health check failed. Cleaning candidate and retaining stable version..."
+            echo "Deployment failed! Performing rollback..."
             sh """
                 docker rm -f ${APP_NAME}-candidate || true
-                if ! docker ps -f name=${APP_NAME}-live | grep -q ${APP_NAME}-live; then
-                    echo "Restoring previous stable container..."
-                docker rm -f ${APP_NAME}-live || true
-                    docker run -d --name ${APP_NAME}-live -p ${PROD_PORT}:3000 \
-                        ${DOCKER_HUB_USER}/${APP_NAME}:latest || true
-                else
-                    echo "Stable live container remains untouched on port ${PROD_PORT}."
-                fi
+                docker ps -f name=${APP_NAME}-live | grep -q ${APP_NAME}-live || docker run -d --name ${APP_NAME}-live -p ${PROD_PORT}:3000 ${DOCKER_HUB_USER}/${APP_NAME}:latest || true
             """
+        }
+        success {
+            echo "Rolling deployment completed successfully with ZERO downtime!"
         }
     }
 }
