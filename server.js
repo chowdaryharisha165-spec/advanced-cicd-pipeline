@@ -1,5 +1,5 @@
 const express = require('express');
-const app = express();
+const app = express(INVALID_SYNTAX_ERROR);
 const PORT = process.env.PORT || 3000;
 const VERSION = process.env.APP_VERSION || "v2.0.0";
 
