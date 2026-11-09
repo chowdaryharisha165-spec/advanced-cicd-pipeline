@@ -2,50 +2,37 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "develop", "main", "feature/*" ]
+    branches: [ "main", "feature/*" ]
   pull_request:
-    branches: [ "develop", "main" ]
+    branches: [ "main" ]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ai-ecommerce-devops
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
       - name: Install dependencies
-        run: |
-          cd application
-          npm install
+        run: npm install
 
       - name: Run unit & smoke tests
-        run: |
-          cd application
-          npm test
+        run: npm test
 
   security-scan:
     needs: build-and-test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ai-ecommerce-devops
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build Docker image locally
-        run: |
-          docker build -t ecommerce-api:ci -f docker/Dockerfile ./application
+        run: docker build -t ecommerce-api:ci -f Dockerfile .
 
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master
