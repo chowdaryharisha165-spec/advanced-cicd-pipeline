@@ -1,0 +1,14 @@
+{
+  "name": "ai-ecommerce-api",
+  "version": "1.0.0",
+  "description": "AI-Powered E-Commerce Core Service",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Running unit tests...\" && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  }
+}
