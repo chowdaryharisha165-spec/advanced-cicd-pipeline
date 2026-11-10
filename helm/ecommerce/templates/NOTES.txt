@@ -1,0 +1,5 @@
+1. Application deployed via Helm Chart: {{ .Chart.Name }}
+2. Check pod status:
+   kubectl get pods -l app.kubernetes.io/name={{ .Chart.Name }}
+3. Check ingress details:
+   kubectl get ingress
