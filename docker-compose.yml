@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: advanced-cicd-app:local
+    container_name: advanced-cicd-app
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - devsecops-network
+
+networks:
+  devsecops-network:
+    driver: bridge
