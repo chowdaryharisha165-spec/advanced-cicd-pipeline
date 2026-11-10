@@ -32,6 +32,14 @@ pipeline {
             }
         }
 
+        stage('Security Scan - Trivy') {
+            steps {
+                echo 'Scanning Docker image for vulnerabilities...'
+                sh 'trivy image --severity HIGH,CRITICAL --format table -o security_scan_report.txt ${DOCKER_HUB_USER}/${APP_NAME}:${IMAGE_TAG}'
+                sh 'cat security_scan_report.txt'
+            }
+        }
+
         stage('Push to Registry') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDS}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
