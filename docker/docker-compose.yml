@@ -1,0 +1,10 @@
+services:
+  ecommerce-web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: harishachowdary/ai-ecommerce-app:v1
+    container_name: ecommerce-app
+    ports:
+      - "3002:3000"
+    restart: unless-stopped
